@@ -3,7 +3,7 @@ import re
 import pandas as pd
 from loguru import logger
 
-from .base_handler import DataHandler
+from rental_prediction.preprocessor.transformers.base_handler import DataHandler
 
 
 class GardenAreaParser(DataHandler):
@@ -11,6 +11,17 @@ class GardenAreaParser(DataHandler):
         super().__init__()
 
     def process(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Process the data by parsing the garden area column.
+
+        Args:
+            data (pd.DataFrame): The data to process.
+
+        Raises:
+            e: If an error occurs during parsing.
+
+        Returns:
+            pd.DataFrame: The processed data.
+        """
         logger.info("Parsing garden area")
         try:
             data["garden"] = data["garden"].apply(
