@@ -1,0 +1,167 @@
+name: Deploy to Cloud Run
+
+on:
+  # Manual deployment trigger
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+  # Automatic deployment when model is promoted
+  push:
+    paths:
+      - 'registry/production_baseline.json'
+    branches:
+      - main
+
+env:
+  PROJECT_ID: fleet-anagram-244304
+  REGION: us-central1  # Change to your preferred region
+  SERVICE_NAME: rental-prediction-api
+  IMAGE_NAME: rental-prediction-api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Create Artifact Registry repository (if needed)
+        run: |
+          # Check if repository exists, create if not
+          gcloud artifacts repositories describe ml-models \
+            --location=${{ env.REGION }} 2>/dev/null || \
+          gcloud artifacts repositories create ml-models \
+            --repository-format=docker \
+            --location=${{ env.REGION }} \
+            --description="ML model serving containers"
+
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/ml-models/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          IMAGE_LATEST="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/ml-models/${{ env.IMAGE_NAME }}:latest"
+
+          docker build -t "${IMAGE_TAG}" -t "${IMAGE_LATEST}" .
+
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "IMAGE_LATEST=${IMAGE_LATEST}" >> $GITHUB_ENV
+
+      - name: Push Docker image to Artifact Registry
+        run: |
+          docker push ${{ env.IMAGE_TAG }}
+          docker push ${{ env.IMAGE_LATEST }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image ${{ env.IMAGE_TAG }} \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --allow-unauthenticated \
+            --memory 2Gi \
+            --cpu 2 \
+            --min-instances 0 \
+            --max-instances 10 \
+            --timeout 300 \
+            --set-env-vars "PYTHONUNBUFFERED=1,LOG_LEVEL=INFO" \
+            --port 8000
+
+      - name: Get service URL
+        id: get-url
+        run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region ${{ env.REGION }} \
+            --format 'value(status.url)')
+          echo "service_url=${SERVICE_URL}" >> $GITHUB_OUTPUT
+          echo "🚀 Service deployed at: ${SERVICE_URL}"
+
+      - name: Test deployment
+        run: |
+          SERVICE_URL="${{ steps.get-url.outputs.service_url }}"
+          echo "Testing health endpoint..."
+
+          # Wait for service to be ready
+          sleep 10
+
+          # Test health endpoint
+          HEALTH_RESPONSE=$(curl -s "${SERVICE_URL}/health")
+          echo "Health check response: ${HEALTH_RESPONSE}"
+
+          # Verify API is responding
+          if echo "${HEALTH_RESPONSE}" | grep -q "healthy\|unhealthy"; then
+            echo "✅ API is responding correctly"
+          else
+            echo "❌ API health check failed"
+            exit 1
+          fi
+
+      - name: Create deployment summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          # 🚀 Cloud Run Deployment
+
+          **Environment:** ${{ github.event.inputs.environment || 'production' }}
+          **Timestamp:** $(date -u +%Y-%m-%d\ %H:%M:%S\ UTC)
+
+          ## Deployment Details
+
+          | Item | Value |
+          |------|-------|
+          | Service Name | ${{ env.SERVICE_NAME }} |
+          | Region | ${{ env.REGION }} |
+          | Image | ${{ env.IMAGE_TAG }} |
+          | Service URL | ${{ steps.get-url.outputs.service_url }} |
+
+          ## Endpoints
+
+          - **API Docs:** ${{ steps.get-url.outputs.service_url }}/docs
+          - **Health Check:** ${{ steps.get-url.outputs.service_url }}/health
+          - **Predict:** ${{ steps.get-url.outputs.service_url }}/predict
+
+          ## Test the API
+
+          \`\`\`bash
+          # Health check
+          curl ${{ steps.get-url.outputs.service_url }}/health
+
+          # Make a prediction
+          curl -X POST "${{ steps.get-url.outputs.service_url }}/predict" \\
+            -H "Content-Type: application/json" \\
+            -d '{
+              "features": {
+                "area": 85.5,
+                "rooms": 3,
+                "construction_year": 2010,
+                "balcony": "yes",
+                "parking": "yes",
+                "furnished": "no",
+                "garage": "no",
+                "storage": "yes",
+                "garden": "50 m²"
+              }
+            }'
+          \`\`\`
+
+          ---
+          ✅ Deployment completed successfully!
+          EOF
