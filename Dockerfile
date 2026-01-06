@@ -19,6 +19,11 @@ RUN uv sync --frozen --no-dev
 # Final stage
 FROM python:3.12-slim
 
+# Install system dependencies for ML libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /app
 
