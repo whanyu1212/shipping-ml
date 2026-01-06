@@ -38,6 +38,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for git push
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -82,6 +84,12 @@ jobs:
       - name: Extract new model metrics
         id: metrics
         run: |
+          # Verify training report exists
+          if [ ! -f "artifacts/training_report.json" ]; then
+            echo "❌ Training report not found - training may have failed"
+            exit 1
+          fi
+
           NEW_RMSE=$(jq -r '.best_model.test_rmse' artifacts/training_report.json)
           NEW_R2=$(jq -r '.best_model.test_r2' artifacts/training_report.json)
           MODEL_NAME=$(jq -r '.best_model.name' artifacts/training_report.json)
@@ -191,7 +199,12 @@ jobs:
           git config --local user.name "github-actions[bot]"
 
           git add registry/production_baseline.json
-          git commit -m "🤖 Promote model to production: ${{ steps.metrics.outputs.model_name }}
+
+          # Only commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit - baseline unchanged"
+          else
+            git commit -m "🤖 Promote model to production: ${{ steps.metrics.outputs.model_name }}
 
           RMSE: ${{ steps.metrics.outputs.new_rmse }}
           R²: ${{ steps.metrics.outputs.new_r2 }}
@@ -199,4 +212,6 @@ jobs:
 
           Workflow: ${{ github.run_id }}"
 
-          git push
+            git push
+            echo "✅ Baseline committed and pushed"
+          fi

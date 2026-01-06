@@ -29,7 +29,8 @@ jobs:
 
       - name: Run tests (if any exist)
         run: |
-          if [ -d "tests" ] && [ "$(ls -A tests/*.py 2>/dev/null)" ]; then
+          # Check if tests directory exists and contains Python files
+          if [ -d "tests" ] && find tests -name "*.py" -type f | grep -q .; then
             uv run pytest tests/ -v --tb=short || echo "⚠️  Some tests failed"
           else
             echo "No tests found, skipping..."
