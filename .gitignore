@@ -169,3 +169,15 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+*.json
+# Exception: Track production baseline for GitHub Actions
+!registry/production_baseline.json
+
+# MLflow and training artifacts
+mlruns/
+artifacts/
+
+# Model registry (individual model files - too large for git)
+models/*/
+!models/.gitkeep
