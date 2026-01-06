@@ -77,6 +77,8 @@ A repository demonstrating various approaches and patterns for productionizing m
 - 🎯 **Hyperparameter tuning**: Optuna integration for automated optimization
 - 🐳 **Containerization**: Docker and Docker Compose for easy deployment
 
+---
+
 ## Getting Started
 
 ### Prerequisites
@@ -98,6 +100,8 @@ source .venv/bin/activate
 ```
 
 **Note:** If you use a different Python version, you may need to resolve dependency conflicts. The project is tested with Python 3.12.
+
+---
 
 ## Quick Start
 
@@ -181,6 +185,8 @@ See [`.github/workflows/DEPLOYMENT.md`](.github/workflows/DEPLOYMENT.md) for com
 
 See [`.github/workflows/README.md`](.github/workflows/README.md) for detailed CI/CD documentation.
 
+---
+
 ## Project Structure
 
 ```
@@ -213,6 +219,8 @@ rental_prediction/
 └── docker-compose.yml     # Multi-container setup
 ```
 
+---
+
 ## MLOps Pipeline
 
 ### CI/CD Workflow
@@ -241,6 +249,8 @@ graph TD
     F --> I[Save Artifacts]
     G --> I
 ```
+
+---
 
 ## Model Development
 
@@ -289,6 +299,8 @@ best_params = tuner.optimize(
 )
 ```
 
+---
+
 ## Configuration
 
 The project uses Pydantic for type-safe configuration:
@@ -306,6 +318,8 @@ config = ModelConfig(
 
 See [`src/rental_prediction/config/README.md`](src/rental_prediction/config/README.md) for why we use Pydantic over dataclasses.
 
+---
+
 ## Architecture Decisions
 
 ### Data Loading: Protocol vs ABC
@@ -316,6 +330,8 @@ Pydantic provides runtime validation, environment variable loading, and type coe
 
 ### Preprocessing: Chain of Responsibility
 Transformers use the Chain of Responsibility pattern for composable, testable preprocessing steps.
+
+---
 
 ## API Reference
 
@@ -439,6 +455,8 @@ FastAPI automatically generates interactive API documentation:
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
+---
+
 ## Monitoring & Observability
 
 ### MLflow Tracking
@@ -485,6 +503,8 @@ The API includes:
 - Model reload without downtime
 - Structured logging with loguru
 - Docker healthcheck for container orchestration
+
+---
 
 ## Architecture & Component Interactions
 
@@ -582,6 +602,8 @@ utils/
 └── ModelRegistry ──> Saves/loads versioned models
 ```
 
+---
+
 ## Customization
 
 ### Change Training Schedule
@@ -615,6 +637,8 @@ Replace GitHub Actions artifacts with S3/GCS:
 - name: Upload to S3
   run: aws s3 cp models/ s3://your-bucket/models/ --recursive
 ```
+
+---
 
 ## Roadmap
 
@@ -715,6 +739,8 @@ Complete the MLOps loop with automated monitoring via GitHub Actions:
   - Real-time preprocessing
   - Data versioning with DVC
 
+---
+
 ## AI-Assisted Development
 
 This project includes comprehensive context for AI coding assistants:
@@ -727,6 +753,8 @@ These files help AI assistants understand:
 - Common commands and workflows
 - Important quirks and gotchas
 - Coding conventions and best practices
+
+---
 
 ## License
 
