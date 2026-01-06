@@ -24,8 +24,9 @@ COPY --from=builder /app/.venv /app/.venv
 
 # Copy application code
 COPY src/ /app/src/
-COPY models/ /app/models/
+COPY registry/ /app/registry/
 COPY data/ /app/data/
+COPY models/ /app/models/
 
 # Set Python path
 ENV PYTHONPATH=/app/src
