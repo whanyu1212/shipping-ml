@@ -1,0 +1,202 @@
+name: Train Models
+
+on:
+  # Scheduled training - runs weekly on Mondays at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * 1'  # Every Monday at 2 AM UTC
+
+  # Manual trigger via GitHub UI
+  workflow_dispatch:
+    inputs:
+      model_type:
+        description: 'Model to train'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - xgboost
+          - lightgbm
+          - both
+      n_trials:
+        description: 'Number of hyperparameter tuning trials'
+        required: false
+        default: '50'
+        type: string
+
+  # Trigger on data changes
+  push:
+    paths:
+      - 'data/**'
+      - 'src/rental_prediction/data/**'
+    branches:
+      - main
+      - develop
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Create directories
+        run: |
+          mkdir -p mlruns registry artifacts
+
+      - name: Train models
+        id: train
+        run: |
+          MODEL_TYPE="${{ github.event.inputs.model_type || 'both' }}"
+          N_TRIALS="${{ github.event.inputs.n_trials || '50' }}"
+
+          echo "Training $MODEL_TYPE with $N_TRIALS trials..."
+          uv run python scripts/train_orchestrator.py \
+            --model-type "$MODEL_TYPE" \
+            --n-trials "$N_TRIALS" \
+            --output artifacts/training_report.json
+
+      - name: Load baseline metrics
+        id: baseline
+        run: |
+          if [ -f "registry/production_baseline.json" ]; then
+            echo "baseline_exists=true" >> $GITHUB_OUTPUT
+            BASELINE_RMSE=$(jq -r '.test_rmse' registry/production_baseline.json)
+            echo "baseline_rmse=$BASELINE_RMSE" >> $GITHUB_OUTPUT
+            echo "📊 Current baseline RMSE: $BASELINE_RMSE"
+          else
+            echo "baseline_exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️  No baseline model found - first training run"
+          fi
+
+      - name: Extract new model metrics
+        id: metrics
+        run: |
+          NEW_RMSE=$(jq -r '.best_model.test_rmse' artifacts/training_report.json)
+          NEW_R2=$(jq -r '.best_model.test_r2' artifacts/training_report.json)
+          MODEL_NAME=$(jq -r '.best_model.name' artifacts/training_report.json)
+
+          echo "new_rmse=$NEW_RMSE" >> $GITHUB_OUTPUT
+          echo "new_r2=$NEW_R2" >> $GITHUB_OUTPUT
+          echo "model_name=$MODEL_NAME" >> $GITHUB_OUTPUT
+
+          echo "🎯 New model metrics:"
+          echo "  Model: $MODEL_NAME"
+          echo "  RMSE: $NEW_RMSE"
+          echo "  R²: $NEW_R2"
+
+      - name: Compare and decide promotion
+        id: promote
+        run: |
+          BASELINE_EXISTS="${{ steps.baseline.outputs.baseline_exists }}"
+          BASELINE_RMSE="${{ steps.baseline.outputs.baseline_rmse }}"
+          NEW_RMSE="${{ steps.metrics.outputs.new_rmse }}"
+
+          if [ "$BASELINE_EXISTS" = "false" ]; then
+            echo "should_promote=true" >> $GITHUB_OUTPUT
+            echo "reason=First model - auto-promoting" >> $GITHUB_OUTPUT
+            echo "✅ First model - will promote to production"
+          else
+            # Compare RMSE (lower is better)
+            if (( $(echo "$NEW_RMSE < $BASELINE_RMSE" | bc -l) )); then
+              IMPROVEMENT=$(echo "scale=2; (($BASELINE_RMSE - $NEW_RMSE) / $BASELINE_RMSE) * 100" | bc)
+              echo "should_promote=true" >> $GITHUB_OUTPUT
+              echo "reason=RMSE improved by ${IMPROVEMENT}%" >> $GITHUB_OUTPUT
+              echo "✅ Model improved! RMSE: $BASELINE_RMSE → $NEW_RMSE (${IMPROVEMENT}% better)"
+            else
+              echo "should_promote=false" >> $GITHUB_OUTPUT
+              echo "reason=No improvement (RMSE: $NEW_RMSE vs baseline $BASELINE_RMSE)" >> $GITHUB_OUTPUT
+              echo "⚠️  Model did not improve. Keeping current baseline."
+            fi
+          fi
+
+      - name: Promote model to production
+        if: steps.promote.outputs.should_promote == 'true'
+        run: |
+          echo "🚀 Promoting model to production..."
+
+          # Update production baseline
+          jq '.best_model' artifacts/training_report.json > registry/production_baseline.json
+
+          # Create promotion record
+          cat > artifacts/promotion_record.json <<EOF
+          {
+            "promoted_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "model_name": "${{ steps.metrics.outputs.model_name }}",
+            "metrics": {
+              "test_rmse": ${{ steps.metrics.outputs.new_rmse }},
+              "test_r2": ${{ steps.metrics.outputs.new_r2 }}
+            },
+            "reason": "${{ steps.promote.outputs.reason }}",
+            "git_sha": "${{ github.sha }}",
+            "workflow_run": "${{ github.run_id }}"
+          }
+          EOF
+
+          cat artifacts/promotion_record.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-artifacts-${{ github.run_id }}
+          path: |
+            artifacts/
+            registry/
+            mlruns/
+          retention-days: 90
+
+      - name: Create training summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          # 🎯 Training Results
+
+          **Run ID:** \`${{ github.run_id }}\`
+          **Timestamp:** $(date -u +%Y-%m-%d\ %H:%M:%S\ UTC)
+
+          ## Model Performance
+
+          | Metric | Value |
+          |--------|-------|
+          | Model | ${{ steps.metrics.outputs.model_name }} |
+          | Test RMSE | ${{ steps.metrics.outputs.new_rmse }} |
+          | Test R² | ${{ steps.metrics.outputs.new_r2 }} |
+
+          ## Promotion Decision
+
+          **Status:** ${{ steps.promote.outputs.should_promote == 'true' && '✅ PROMOTED' || '⚠️ NOT PROMOTED' }}
+          **Reason:** ${{ steps.promote.outputs.reason }}
+
+          EOF
+
+          if [ "${{ steps.promote.outputs.should_promote }}" = "true" ]; then
+            echo "The new model has been promoted to production! 🚀" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "The baseline model remains in production." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Commit production baseline (if promoted)
+        if: steps.promote.outputs.should_promote == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          git add registry/production_baseline.json
+          git commit -m "🤖 Promote model to production: ${{ steps.metrics.outputs.model_name }}
+
+          RMSE: ${{ steps.metrics.outputs.new_rmse }}
+          R²: ${{ steps.metrics.outputs.new_r2 }}
+          Reason: ${{ steps.promote.outputs.reason }}
+
+          Workflow: ${{ github.run_id }}"
+
+          git push
