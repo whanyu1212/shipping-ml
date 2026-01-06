@@ -1,6 +1,68 @@
+<!-- omit from toc -->
 # ML in Production Examples
 
-A repository demonstrating various approaches and patterns for productionizing machine learning models, using a rental prediction use case with **automated continuous training via GitHub Actions**.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A repository demonstrating various approaches and patterns for productionizing machine learning models, using a rental prediction toy example (more will be added in the future) with **automated continuous training via GitHub Actions**.
+
+<!-- omit from toc -->
+## Table of Contents
+
+- [Features](#features)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+- [Quick Start](#quick-start)
+  - [Local Training](#local-training)
+  - [Model Serving (API)](#model-serving-api)
+  - [Using GitHub Actions (Continuous Training)](#using-github-actions-continuous-training)
+    - [1. Manual Training](#1-manual-training)
+    - [2. Scheduled Training](#2-scheduled-training)
+    - [3. Automatic Model Promotion](#3-automatic-model-promotion)
+    - [4. Cloud Deployment](#4-cloud-deployment)
+- [Project Structure](#project-structure)
+- [MLOps Pipeline](#mlops-pipeline)
+  - [CI/CD Workflow](#cicd-workflow)
+  - [Continuous Training Pipeline](#continuous-training-pipeline)
+- [Model Development](#model-development)
+  - [Training a Model](#training-a-model)
+  - [Hyperparameter Tuning](#hyperparameter-tuning)
+- [Configuration](#configuration)
+- [Architecture Decisions](#architecture-decisions)
+  - [Data Loading: Protocol vs ABC](#data-loading-protocol-vs-abc)
+  - [Configuration: Pydantic vs Dataclasses](#configuration-pydantic-vs-dataclasses)
+  - [Preprocessing: Chain of Responsibility](#preprocessing-chain-of-responsibility)
+- [API Reference](#api-reference)
+  - [Running the API](#running-the-api)
+    - [With Docker (Recommended)](#with-docker-recommended)
+    - [Local Development](#local-development)
+  - [API Endpoints](#api-endpoints)
+    - [`GET /` - API Information](#get----api-information)
+    - [`GET /health` - Health Check](#get-health---health-check)
+    - [`POST /predict` - Single Prediction](#post-predict---single-prediction)
+    - [`POST /predict/batch` - Batch Predictions](#post-predictbatch---batch-predictions)
+    - [`GET /model/info` - Model Metadata](#get-modelinfo---model-metadata)
+    - [`POST /model/reload` - Reload Model](#post-modelreload---reload-model)
+  - [Interactive API Documentation](#interactive-api-documentation)
+- [Monitoring \& Observability](#monitoring--observability)
+  - [MLflow Tracking](#mlflow-tracking)
+  - [GitHub Actions Dashboard](#github-actions-dashboard)
+  - [Production Baseline](#production-baseline)
+  - [API Monitoring](#api-monitoring)
+- [Architecture \& Component Interactions](#architecture--component-interactions)
+  - [Complete MLOps Pipeline Flow](#complete-mlops-pipeline-flow)
+  - [Key Interactions](#key-interactions)
+  - [Component Dependencies](#component-dependencies)
+- [Customization](#customization)
+  - [Change Training Schedule](#change-training-schedule)
+  - [Adjust Promotion Criteria](#adjust-promotion-criteria)
+  - [Add Cloud Storage](#add-cloud-storage)
+- [Roadmap](#roadmap)
+  - [Testing \& Quality Assurance (High Priority)](#testing--quality-assurance-high-priority)
+  - [Production Monitoring (Future Enhancement)](#production-monitoring-future-enhancement)
+  - [Other Future Enhancements](#other-future-enhancements)
+- [AI-Assisted Development](#ai-assisted-development)
+- [License](#license)
 
 ## Features
 
@@ -14,6 +76,8 @@ A repository demonstrating various approaches and patterns for productionizing m
 - ✅ **Data validation**: Runtime schema validation with Pandera
 - 🎯 **Hyperparameter tuning**: Optuna integration for automated optimization
 - 🐳 **Containerization**: Docker and Docker Compose for easy deployment
+
+---
 
 ## Getting Started
 
@@ -36,6 +100,8 @@ source .venv/bin/activate
 ```
 
 **Note:** If you use a different Python version, you may need to resolve dependency conflicts. The project is tested with Python 3.12.
+
+---
 
 ## Quick Start
 
@@ -119,6 +185,8 @@ See [`.github/workflows/DEPLOYMENT.md`](.github/workflows/DEPLOYMENT.md) for com
 
 See [`.github/workflows/README.md`](.github/workflows/README.md) for detailed CI/CD documentation.
 
+---
+
 ## Project Structure
 
 ```
@@ -151,6 +219,8 @@ rental_prediction/
 └── docker-compose.yml     # Multi-container setup
 ```
 
+---
+
 ## MLOps Pipeline
 
 ### CI/CD Workflow
@@ -179,6 +249,8 @@ graph TD
     F --> I[Save Artifacts]
     G --> I
 ```
+
+---
 
 ## Model Development
 
@@ -227,6 +299,8 @@ best_params = tuner.optimize(
 )
 ```
 
+---
+
 ## Configuration
 
 The project uses Pydantic for type-safe configuration:
@@ -244,6 +318,8 @@ config = ModelConfig(
 
 See [`src/rental_prediction/config/README.md`](src/rental_prediction/config/README.md) for why we use Pydantic over dataclasses.
 
+---
+
 ## Architecture Decisions
 
 ### Data Loading: Protocol vs ABC
@@ -254,6 +330,8 @@ Pydantic provides runtime validation, environment variable loading, and type coe
 
 ### Preprocessing: Chain of Responsibility
 Transformers use the Chain of Responsibility pattern for composable, testable preprocessing steps.
+
+---
 
 ## API Reference
 
@@ -377,6 +455,8 @@ FastAPI automatically generates interactive API documentation:
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
+---
+
 ## Monitoring & Observability
 
 ### MLflow Tracking
@@ -424,6 +504,106 @@ The API includes:
 - Structured logging with loguru
 - Docker healthcheck for container orchestration
 
+---
+
+## Architecture & Component Interactions
+
+### Complete MLOps Pipeline Flow
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ 1. DATA INGESTION & VALIDATION                                   │
+│    CSVLoader → Pandera Schema → Validated DataFrame              │
+└────────────────┬─────────────────────────────────────────────────┘
+                 │
+                 v
+┌──────────────────────────────────────────────────────────────────┐
+│ 2. PREPROCESSING (Chain of Responsibility)                       │
+│    ConstructionYear → BinaryFeatures → Categorical → Numeric     │
+└────────────────┬─────────────────────────────────────────────────┘
+                 │
+                 v
+┌──────────────────────────────────────────────────────────────────┐
+│ 3. TRAINING & HYPERPARAMETER TUNING                              │
+│    Optuna (suggest_params) → Train/Val/Test Split → MLflow Log   │
+└────────────────┬─────────────────────────────────────────────────┘
+                 │
+                 v
+┌──────────────────────────────────────────────────────────────────┐
+│ 4. MODEL REGISTRY & PROMOTION                                    │
+│    ModelRegistry.save() → Compare RMSE → Update Baseline         │
+└────────────────┬─────────────────────────────────────────────────┘
+                 │
+                 v (if promoted)
+┌──────────────────────────────────────────────────────────────────┐
+│ 5. DEPLOYMENT                                                    │
+│    Commit registry/production_baseline.json → Trigger Deploy     │
+│    → Build Docker → Push to Artifact Registry → Cloud Run        │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Key Interactions
+
+**Training Workflow**:
+1. `train_orchestrator.py` loads data via `CSVLoader` (with Pandera validation)
+2. `DataPreprocessor` applies transformation chain
+3. `Trainer` splits data (60% train, 20% val, 20% test)
+4. `HyperparameterTuner` uses Optuna to find best params
+5. Models trained with `suggest_params()` classmethod pattern
+6. `ExperimentTracker` logs everything to MLflow
+7. `ModelRegistry` saves versioned models to `models/{name}/{timestamp}/`
+8. Best model metadata written to `registry/production_baseline.json`
+
+**API Serving Workflow**:
+1. `PredictionService` loads model on startup from baseline
+2. FastAPI `lifespan` context manager handles startup/shutdown
+3. Incoming requests validated by Pydantic schemas
+4. Model preprocessing pipeline applied to input features
+5. Prediction returned with model metadata
+6. `/model/reload` endpoint hot-reloads without restart
+
+**CI/CD Workflow**:
+1. **CI** (on PR): Schema validation + smoke tests
+2. **Training** (weekly/manual): Train → Compare → Promote → Commit
+3. **Deployment** (on main push): Build → Push → Deploy to Cloud Run
+4. Cloud Run serves API at public URL with auto-scaling
+
+### Component Dependencies
+
+```
+config/
+├── ModelConfig (Pydantic) ──> Used by Trainer & HyperparameterTuner
+└── Settings (BaseSettings) ──> Environment-specific configs
+
+data/
+├── DataLoader (Protocol) ──> Interface for all loaders
+├── CSVLoader ──> Implements DataLoader + Pandera validation
+└── DfSchema (Pandera) ──> Validates all incoming data
+
+models/
+├── BaseModel ──> Abstract base with suggest_params() classmethod
+├── XGBoostModel ──> Inherits BaseModel, implements training logic
+└── LightGBMModel ──> Inherits BaseModel, implements training logic
+
+preprocessor/
+└── DataPreprocessor ──> Chains transformers in sequence
+
+training/
+├── Trainer ──> Uses Model + Preprocessor + ExperimentTracker
+├── HyperparameterTuner ──> Uses Optuna + Model.suggest_params()
+└── ExperimentTracker ──> Wraps MLflow logging
+
+api/
+├── main.py ──> FastAPI app with lifespan management
+├── schemas.py ──> Pydantic request/response models
+└── predictor.py ──> PredictionService loads models from registry
+
+utils/
+└── ModelRegistry ──> Saves/loads versioned models
+```
+
+---
+
 ## Customization
 
 ### Change Training Schedule
@@ -458,7 +638,48 @@ Replace GitHub Actions artifacts with S3/GCS:
   run: aws s3 cp models/ s3://your-bucket/models/ --recursive
 ```
 
+---
+
 ## Roadmap
+
+### Testing & Quality Assurance (High Priority)
+
+Comprehensive test coverage is essential for production ML systems:
+
+- [ ] **Unit Tests**
+  - Test individual transformers in preprocessing pipeline
+  - Test model training and prediction methods
+  - Test data validation schemas (Pandera)
+  - Test configuration loading and validation
+  - Target: 80%+ code coverage with pytest
+
+- [ ] **Integration Tests**
+  - Test end-to-end training pipeline
+  - Test API endpoints with test client
+  - Test model registry save/load operations
+  - Test MLflow logging integration
+  - Test database connections (if added)
+
+- [ ] **API Tests**
+  - Contract testing for API endpoints
+  - Load testing with Locust or k6
+  - Response time benchmarking
+  - Error handling and edge cases
+  - Concurrent request testing
+
+- [ ] **Model Tests**
+  - Model performance regression tests
+  - Prediction consistency tests (same input → same output)
+  - Model serialization/deserialization tests
+  - Feature importance validation
+  - Test model behavior on edge cases
+
+- [ ] **CI/CD Testing**
+  - Automated test execution in GitHub Actions
+  - Pre-commit hooks for local testing
+  - Test coverage reporting (codecov.io)
+  - Integration with pytest-cov
+  - Fail builds on test failures
 
 ### Production Monitoring (Future Enhancement)
 
@@ -496,11 +717,15 @@ Complete the MLOps loop with automated monitoring via GitHub Actions:
 
 ### Other Future Enhancements
 
-- [ ] **Advanced Deployment**
-  - Kubernetes manifests for production
-  - Helm charts for easy deployment
-  - Cloud deployment examples (AWS/GCP/Azure)
-  - Blue-green deployment strategy
+- [x] **Cloud Deployment** ✅ COMPLETED
+  - [x] Google Cloud Run deployment with GitHub Actions
+  - [x] Automatic deployment on model promotion
+  - [x] Docker multi-stage builds with system dependencies
+  - [x] Service account authentication
+  - [ ] Kubernetes manifests for production (optional)
+  - [ ] Helm charts for easy deployment (optional)
+  - [ ] AWS/Azure deployment examples (optional)
+  - [ ] Blue-green deployment strategy (optional)
 
 - [ ] **Model Improvements**
   - Ensemble models (stacking)
@@ -514,16 +739,25 @@ Complete the MLOps loop with automated monitoring via GitHub Actions:
   - Real-time preprocessing
   - Data versioning with DVC
 
-- [ ] **Enhanced Testing**
-  - Integration tests for API
-  - Load testing with Locust
-  - Model performance regression tests
-  - Contract testing for API
+---
 
-## Contributing
+## AI-Assisted Development
 
-See [CLAUDE.md](CLAUDE.md) for project conventions and coding standards.
+This project includes comprehensive context for AI coding assistants:
+
+- **Claude Code**: See [.claude/CLAUDE.md](.claude/CLAUDE.md) for project conventions, architecture patterns, and development guidelines
+- **Other AI tools**: You can create similar context files (e.g., `AGENTS.md`, `.cursor/rules`, `.github/copilot-instructions.md`) following the same pattern
+
+These files help AI assistants understand:
+- Project structure and design patterns
+- Common commands and workflows
+- Important quirks and gotchas
+- Coding conventions and best practices
+
+---
 
 ## License
 
-[Your License Here]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+**TL;DR**: You're free to use, modify, and distribute this code for any purpose, including commercial use, as long as you include the original copyright notice.
