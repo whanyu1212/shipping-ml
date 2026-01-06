@@ -10,6 +10,9 @@ WORKDIR /app
 # Copy dependency files (README.md needed by hatchling build backend)
 COPY pyproject.toml uv.lock .python-version README.md ./
 
+# Copy source code (needed for package build)
+COPY src/ /app/src/
+
 # Install dependencies
 RUN uv sync --frozen --no-dev
 
